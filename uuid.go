@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"io"
 	"time"
 )
@@ -36,23 +38,46 @@ const (
 )
 
 func New() (UUID, error) {
-	var u UUID
+	var uuid UUID
 
 	var tms uint64
 	now := time.Now()
 	tms += uint64(now.Unix())*1e3
 	tms += uint64(now.Nanosecond())/1e6
-	binary.BigEndian.PutUint64(u[:8], tms<<16)
+	binary.BigEndian.PutUint64(uuid[:8], tms<<16)
 
-	_, err := io.ReadFull(rand.Reader, u[6:])
+	_, err := io.ReadFull(rand.Reader, uuid[6:])
 	if err != nil {
 		return Nil, err
 	}
 
-	u[6] = (u[6] & 0x0f) | V7             // Version 7
-	u[8] = (u[8] & 0x3f) | VariantRFC4122 // Variant is 10
+	uuid[6] = (uuid[6] & 0x0f) | V7             // Version 7
+	uuid[8] = (uuid[8] & 0x3f) | VariantRFC4122 // Variant is 10
 
-	return u, nil
+	return uuid, nil
+}
+
+// Parse UUID strings that are formatted as defined in RFC-4122 (section 3):
+// xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+func Parse(s string) (UUID, error) {
+	var uuid UUID
+	if len(s) != 36 {
+		return uuid, fmt.Errorf("invalid UUID length: %d", len(s))
+	}
+	if s[8] != '-' || s[13] != '-' || s[18] != '-' || s[23] != '-' {
+		return uuid, errors.New("invalid UUID format")
+	}
+	// Processed two hex characters at a time
+	for i, x := range [16]int{
+		0, 2, 4, 6,
+		9, 11,
+		14, 16,
+		19, 21,
+		24, 26, 28, 30, 32, 34} {
+		v := (s[x] << 4) | s[x+1]
+		uuid[i] = v
+	}
+	return uuid, nil
 }
 
 // String returns the string form of uuid, xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
